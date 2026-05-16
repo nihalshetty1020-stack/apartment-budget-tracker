@@ -1,10 +1,25 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { initializeApp } from "firebase/app";
+import { addDoc, collection, deleteDoc, doc, getDoc, getFirestore, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDKl5TBd-XIiPnvuBxd56cG9sg_0lxeeIU",
+  authDomain: "apartment-budget-tracker.firebaseapp.com",
+  projectId: "apartment-budget-tracker",
+  storageBucket: "apartment-budget-tracker.firebasestorage.app",
+  messagingSenderId: "389694587209",
+  appId: "1:389694587209:web:99f521975999a66f1c9a98",
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
 
 const people = ["Nihal", "Shreya"];
 const categories = ["Rent", "Grocery", "Hydro", "Wi-Fi", "Laundry", "Rental Insurance", "Household", "Transportation", "Savings", "Other"];
 const NEW_LINE = String.fromCharCode(10);
 const STORAGE_KEY = "budget-tracker-data-v1";
 const TEST_STORAGE_KEY = "budget-tracker-test-key";
+const SETTINGS_DOC = "shared-settings";
 
 function today() { return new Date().toISOString().slice(0, 10); }
 function currentMonth() { return new Date().toISOString().slice(0, 7); }
@@ -92,12 +107,14 @@ function runTests() {
   console.assert(testStorage(), "local storage should save and load test data");
   console.assert(today().length === 10, "today helper should return yyyy-mm-dd");
   console.assert(typeof STORAGE_KEY === "string", "storage key should exist");
+  console.assert(typeof SETTINGS_DOC === "string", "settings doc should exist");
 }
 if (typeof window !== "undefined") runTests();
 
 export default function ApartmentExpenseTracker() {
   const savedData = typeof window !== "undefined" ? loadSavedData() : null;
   const [expenses, setExpenses] = useState(savedData?.expenses || []);
+  const [syncStatus, setSyncStatus] = useState("Connecting to cloud...");
   const [month, setMonth] = useState(savedData?.month || currentMonth());
   const [budget, setBudget] = useState(savedData?.budget || 3200);
   const [savingsGoal, setSavingsGoal] = useState(savedData?.savingsGoal || 500);
@@ -122,6 +139,39 @@ export default function ApartmentExpenseTracker() {
   useEffect(() => {
     saveData({ expenses, month, budget, savingsGoal, dark, activeUser, recurring });
   }, [expenses, month, budget, savingsGoal, dark, activeUser, recurring]);
+
+  useEffect(() => {
+    const expensesQuery = query(collection(db, "expenses"), orderBy("date", "desc"));
+    const unsubscribe = onSnapshot(expensesQuery, (snapshot) => {
+      const cloudExpenses = snapshot.docs.map((expenseDoc) => ({ id: expenseDoc.id, ...expenseDoc.data() }));
+      setExpenses(cloudExpenses);
+      setSyncStatus("Cloud sync active");
+    }, (error) => {
+      console.error("Firestore expense sync error:", error);
+      setSyncStatus("Cloud sync issue - using this device only");
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const settingsRef = doc(db, "settings", SETTINGS_DOC);
+    getDoc(settingsRef).then((snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (typeof data.budget === "number") setBudget(data.budget);
+        if (typeof data.savingsGoal === "number") setSavingsGoal(data.savingsGoal);
+        if (Array.isArray(data.recurring)) setRecurring(data.recurring);
+      } else {
+        setDoc(settingsRef, { budget, savingsGoal, recurring, updatedAt: serverTimestamp() });
+      }
+    }).catch((error) => console.error("Firestore settings load error:", error));
+  }, []);
+
+  async function saveSharedSettings(nextSettings) {
+    const settingsRef = doc(db, "settings", SETTINGS_DOC);
+    await setDoc(settingsRef, { ...nextSettings, updatedAt: serverTimestamp() }, { merge: true });
+  }
   
 
   function resetForm() {
@@ -129,14 +179,19 @@ export default function ApartmentExpenseTracker() {
     setForm({ date: today(), category: "Grocery", description: "", amount: "", paidBy: activeUser, split: "50/50", receipt: "" });
   }
 
-  function saveExpense(event) {
+  async function saveExpense(event) {
     event.preventDefault();
     if (!form.amount || Number(form.amount) <= 0) return;
-    const saved = { ...form, amount: Number(form.amount), month: form.date.slice(0, 7) };
-    if (editingId) setExpenses((list) => list.map((item) => (item.id === editingId ? { ...item, ...saved } : item)));
-    else setExpenses((list) => [{ id: makeId(), ...saved }, ...list]);
-    setMonth(saved.month);
-    resetForm();
+    const saved = { ...form, amount: Number(form.amount), month: form.date.slice(0, 7), updatedAt: serverTimestamp() };
+    try {
+      if (editingId) await updateDoc(doc(db, "expenses", editingId), saved);
+      else await addDoc(collection(db, "expenses"), { ...saved, createdAt: serverTimestamp() });
+      setMonth(saved.month);
+      resetForm();
+    } catch (error) {
+      console.error("Firestore save expense error:", error);
+      alert("Could not save this expense to the cloud. Please try again.");
+    }
   }
 
   function editExpense(item) {
@@ -144,7 +199,14 @@ export default function ApartmentExpenseTracker() {
     setForm({ date: item.date, category: item.category, description: item.description, amount: item.amount, paidBy: item.paidBy, split: item.split, receipt: item.receipt || "" });
   }
 
-  function deleteExpense(id) { setExpenses((list) => list.filter((item) => item.id !== id)); }
+  async function deleteExpense(id) {
+    try {
+      await deleteDoc(doc(db, "expenses", id));
+    } catch (error) {
+      console.error("Firestore delete expense error:", error);
+      alert("Could not delete this expense from the cloud. Please try again.");
+    }
+  }
 
   function updateDescription(value) {
     const guessed = autoCategory(value);
@@ -161,15 +223,36 @@ export default function ApartmentExpenseTracker() {
     URL.revokeObjectURL(url);
   }
 
-  function addRecurringBills() {
+  async function addRecurringBills() {
     const newItems = recurring.filter((bill) => Number(bill.amount) > 0).map((bill) => ({
-      id: makeId(), date: `${month}-01`, month, category: bill.category, description: `${bill.name} - recurring`, amount: Number(bill.amount), paidBy: bill.paidBy, split: "50/50", receipt: ""
+      date: `${month}-01`, month, category: bill.category, description: `${bill.name} - recurring`, amount: Number(bill.amount), paidBy: bill.paidBy, split: "50/50", receipt: "", createdAt: serverTimestamp(), updatedAt: serverTimestamp()
     }));
-    setExpenses((list) => [...newItems, ...list]);
+    try {
+      await Promise.all(newItems.map((item) => addDoc(collection(db, "expenses"), item)));
+    } catch (error) {
+      console.error("Firestore recurring bill error:", error);
+      alert("Could not add recurring bills to the cloud. Please try again.");
+    }
   }
 
   function updateRecurring(id, field, value) {
-    setRecurring((list) => list.map((bill) => (bill.id === id ? { ...bill, [field]: value } : bill)));
+    setRecurring((list) => {
+      const updated = list.map((bill) => (bill.id === id ? { ...bill, [field]: value } : bill));
+      saveSharedSettings({ budget, savingsGoal, recurring: updated }).catch((error) => console.error("Firestore recurring setting error:", error));
+      return updated;
+    });
+  }
+
+  function updateBudget(value) {
+    const nextBudget = Number(value);
+    setBudget(nextBudget);
+    saveSharedSettings({ budget: nextBudget, savingsGoal, recurring }).catch((error) => console.error("Firestore budget setting error:", error));
+  }
+
+  function updateSavingsGoal(value) {
+    const nextGoal = Number(value);
+    setSavingsGoal(nextGoal);
+    saveSharedSettings({ budget, savingsGoal: nextGoal, recurring }).catch((error) => console.error("Firestore savings setting error:", error));
   }
 
   const pageClass = dark ? "min-h-screen bg-slate-950 text-white" : "min-h-screen bg-gradient-to-br from-indigo-50 via-white to-emerald-50 text-slate-900";
@@ -213,6 +296,7 @@ export default function ApartmentExpenseTracker() {
             <div>
               <h1 className="text-3xl font-bold sm:text-4xl">Budget Tracker</h1>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/85 sm:text-base">Shared apartment budget with split tracking, recurring bills, savings, receipts, and backups.</p>
+              <p className="mt-3 inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white/90">{syncStatus}</p>
             </div>
             <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:w-auto">
               <select value={activeUser} onChange={(e) => { setActiveUser(e.target.value); setForm((f) => ({ ...f, paidBy: e.target.value })); }} className="w-full rounded-2xl border border-white/40 bg-white/10 px-4 py-3 text-base text-white outline-none">
@@ -227,7 +311,7 @@ export default function ApartmentExpenseTracker() {
         <section className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className={cardClass}><p className="text-sm opacity-70">Month</p><div className={dark ? "date-field-wrap relative mt-3" : "mt-3"}><input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className={`w-full min-w-0 ${dateInputClass}`} /></div></div>
           <div className="min-w-0 rounded-3xl bg-gradient-to-br from-indigo-500 to-violet-500 p-5 text-white"><p className="text-sm text-white/80">Monthly Total</p><h2 className="mt-3 text-2xl font-bold sm:text-3xl">{money(totals.total)}</h2><p className="text-sm text-white/80">{monthExpenses.length} expenses</p></div>
-          <div className="min-w-0 rounded-3xl bg-gradient-to-br from-teal-500 to-emerald-500 p-5 text-white"><p className="text-sm text-white/80">Budget</p><input type="number" value={budget} onChange={(e) => setBudget(Number(e.target.value))} className="mt-3 w-full rounded-2xl border border-white/40 bg-white/15 px-4 py-3 text-xl font-bold text-white outline-none" /><div className="mt-3 h-2 rounded-full bg-white/25"><div className="h-2 rounded-full bg-white" style={{ width: `${budgetUsed}%` }} /></div></div>
+          <div className="min-w-0 rounded-3xl bg-gradient-to-br from-teal-500 to-emerald-500 p-5 text-white"><p className="text-sm text-white/80">Budget</p><input type="number" value={budget} onChange={(e) => updateBudget(e.target.value)} className="mt-3 w-full rounded-2xl border border-white/40 bg-white/15 px-4 py-3 text-xl font-bold text-white outline-none" /><div className="mt-3 h-2 rounded-full bg-white/25"><div className="h-2 rounded-full bg-white" style={{ width: `${budgetUsed}%` }} /></div></div>
           <div className="min-w-0 rounded-3xl bg-gradient-to-br from-orange-400 to-pink-500 p-5 text-white"><p className="text-sm text-white/80">Split Summary</p><h2 className="mt-3 text-lg font-bold">{settlement}</h2><p className="text-sm text-white/80">50/50 or personal</p></div>
         </section>
 
@@ -265,7 +349,7 @@ export default function ApartmentExpenseTracker() {
 
           <section className="min-w-0 space-y-5">
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-              <div className={cardClass}><h2 className="text-xl font-bold">Savings tracker</h2><input type="number" value={savingsGoal} onChange={(e) => setSavingsGoal(Number(e.target.value))} className={`mt-3 w-full ${inputClass}`} /><p className="mt-3 text-2xl font-bold">{money(totals.savings)}</p><div className="mt-3 h-3 rounded-full bg-slate-200"><div className="h-3 rounded-full bg-emerald-500" style={{ width: `${savingsUsed}%` }} /></div></div>
+              <div className={cardClass}><h2 className="text-xl font-bold">Savings tracker</h2><input type="number" value={savingsGoal} onChange={(e) => updateSavingsGoal(e.target.value)} className={`mt-3 w-full ${inputClass}`} /><p className="mt-3 text-2xl font-bold">{money(totals.savings)}</p><div className="mt-3 h-3 rounded-full bg-slate-200"><div className="h-3 rounded-full bg-emerald-500" style={{ width: `${savingsUsed}%` }} /></div></div>
               <div className={cardClass}><h2 className="text-xl font-bold">Charts & analytics</h2><div className="mt-3 space-y-2">{categoryTotals.length === 0 ? <p className="text-sm opacity-70">Add expenses to see chart.</p> : categoryTotals.map((item) => <div key={item.category}><div className="flex justify-between text-sm"><span>{item.category}</span><b>{money(item.total)}</b></div><div className="h-2 rounded-full bg-slate-200"><div className="h-2 rounded-full bg-indigo-500" style={{ width: `${totals.total ? (item.total / totals.total) * 100 : 0}%` }} /></div></div>)}</div></div>
             </div>
 
