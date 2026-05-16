@@ -90,6 +90,8 @@ function runTests() {
   console.assert(autoCategory("random item") === "Other", "unknown item should be Other");
   console.assert(createCsv(sample).includes(NEW_LINE), "CSV should include new lines");
   console.assert(testStorage(), "local storage should save and load test data");
+  console.assert(today().length === 10, "today helper should return yyyy-mm-dd");
+  console.assert(typeof STORAGE_KEY === "string", "storage key should exist");
 }
 if (typeof window !== "undefined") runTests();
 
@@ -172,46 +174,42 @@ export default function ApartmentExpenseTracker() {
 
   const pageClass = dark ? "min-h-screen bg-slate-950 text-white" : "min-h-screen bg-gradient-to-br from-indigo-50 via-white to-emerald-50 text-slate-900";
   const cardClass = dark ? "rounded-3xl border border-slate-800 bg-slate-900 p-5 sm:p-6" : "rounded-3xl border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6";
-  const inputClass = dark ? "rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-base text-white outline-none" : "rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base outline-none";
+  const inputClass = dark ? "rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-base text-white outline-none color-scheme-dark" : "rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base outline-none";
 
   return (
     <div className={pageClass}>
-      <div className="mx-auto max-w-6xl px-3 py-4 sm:px-4 sm:py-5 lg:px-6">
+      <div className="mx-auto w-full max-w-6xl overflow-x-hidden px-3 py-4 sm:px-4 sm:py-5 lg:px-6">
         <header className="mb-5 rounded-[2rem] bg-gradient-to-br from-indigo-600 via-violet-600 to-teal-500 p-5 text-white shadow-xl sm:p-6 lg:p-7">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h1 className="text-3xl font-bold sm:text-4xl">Budget Tracker</h1>
-              <p className="mt-2 text-white/80">Shared apartment budget with split tracking, recurring bills, savings, receipts, and backups.</p>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/85 sm:text-base">Shared apartment budget with split tracking, recurring bills, savings, receipts, and backups.</p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              <select value={activeUser} onChange={(e) => { setActiveUser(e.target.value); setForm((f) => ({ ...f, paidBy: e.target.value })); }} className="rounded-2xl border border-white/40 bg-white/10 px-4 py-3 text-base text-white">
+            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:w-auto">
+              <select value={activeUser} onChange={(e) => { setActiveUser(e.target.value); setForm((f) => ({ ...f, paidBy: e.target.value })); }} className="w-full rounded-2xl border border-white/40 bg-white/10 px-4 py-3 text-base text-white outline-none">
                 {people.map((p) => <option key={p} className="text-slate-900">{p}</option>)}
               </select>
-              <button onClick={() => setDark(!dark)} className="rounded-2xl border border-white/40 bg-white/10 px-4 py-3 text-base text-white">{dark ? "Light" : "Dark"}</button>
-              <button onClick={exportCsv} className="rounded-2xl bg-white px-4 py-3 text-base font-semibold text-indigo-700">CSV / Sheets Backup</button>
+              <button onClick={() => setDark(!dark)} className="w-full rounded-2xl border border-white/40 bg-white/10 px-4 py-3 text-base text-white outline-none">{dark ? "Light" : "Dark"}</button>
+              <button onClick={exportCsv} className="w-full rounded-2xl bg-white px-4 py-3 text-base font-semibold text-indigo-700">CSV / Sheets Backup</button>
             </div>
           </div>
         </header>
 
-        <section className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className={cardClass}><p className="text-sm opacity-70">Month</p><input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className={`mt-3 w-full ${inputClass}`} /></div>
-          <div className="rounded-3xl bg-gradient-to-br from-indigo-500 to-violet-500 p-5 text-white"><p className="text-sm text-white/80">Monthly Total</p><h2 className="mt-3 text-2xl font-bold sm:text-3xl">{money(totals.total)}</h2><p className="text-sm text-white/80">{monthExpenses.length} expenses</p></div>
-          <div className="rounded-3xl bg-gradient-to-br from-teal-500 to-emerald-500 p-5 text-white"><p className="text-sm text-white/80">Budget</p><input type="number" value={budget} onChange={(e) => setBudget(Number(e.target.value))} className="mt-3 w-full rounded-2xl border border-white/40 bg-white/15 px-4 py-3 text-xl font-bold text-white outline-none" /><div className="mt-3 h-2 rounded-full bg-white/25"><div className="h-2 rounded-full bg-white" style={{ width: `${budgetUsed}%` }} /></div></div>
-          <div className="rounded-3xl bg-gradient-to-br from-orange-400 to-pink-500 p-5 text-white"><p className="text-sm text-white/80">Split Summary</p><h2 className="mt-3 text-lg font-bold">{settlement}</h2><p className="text-sm text-white/80">50/50 or personal</p></div>
+        <section className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className={cardClass}><p className="text-sm opacity-70">Month</p><input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className={`mt-3 w-full min-w-0 ${inputClass} dark:[color-scheme:dark]`} /></div>
+          <div className="min-w-0 rounded-3xl bg-gradient-to-br from-indigo-500 to-violet-500 p-5 text-white"><p className="text-sm text-white/80">Monthly Total</p><h2 className="mt-3 text-2xl font-bold sm:text-3xl">{money(totals.total)}</h2><p className="text-sm text-white/80">{monthExpenses.length} expenses</p></div>
+          <div className="min-w-0 rounded-3xl bg-gradient-to-br from-teal-500 to-emerald-500 p-5 text-white"><p className="text-sm text-white/80">Budget</p><input type="number" value={budget} onChange={(e) => setBudget(Number(e.target.value))} className="mt-3 w-full rounded-2xl border border-white/40 bg-white/15 px-4 py-3 text-xl font-bold text-white outline-none" /><div className="mt-3 h-2 rounded-full bg-white/25"><div className="h-2 rounded-full bg-white" style={{ width: `${budgetUsed}%` }} /></div></div>
+          <div className="min-w-0 rounded-3xl bg-gradient-to-br from-orange-400 to-pink-500 p-5 text-white"><p className="text-sm text-white/80">Split Summary</p><h2 className="mt-3 text-lg font-bold">{settlement}</h2><p className="text-sm text-white/80">50/50 or personal</p></div>
         </section>
 
-        <section className="mb-5 grid gap-3 sm:grid-cols-3">
-          <div className={cardClass}><b>Cloud sync</b><p className="mt-1 text-sm opacity-70">Preview placeholder. Real live sync needs Firebase/Supabase.</p></div>
-          <div className={cardClass}><b>Mobile app style</b><p className="mt-1 text-sm opacity-70">Responsive layout ready for phone browser/PWA.</p></div>
-          <div className={cardClass}><b>Login</b><p className="mt-1 text-sm opacity-70">Use the Nihal/Shreya switch now. Secure login needs backend auth.</p></div>
-        </section>
+        
 
-        <main className="grid gap-5 lg:grid-cols-[390px_1fr]">
-          <section className="space-y-5">
+        <main className="grid grid-cols-1 gap-5 xl:grid-cols-[390px_minmax(0,1fr)]">
+          <section className="min-w-0 space-y-5">
             <div className={cardClass}>
               <h2 className="mb-4 text-xl font-bold">{editingId ? "Edit expense" : "Add expense"}</h2>
               <form onSubmit={saveExpense} className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-2"><input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className={inputClass} /><input type="number" min="0" step="0.01" placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={inputClass} /></div>
+                <div className="grid gap-3 sm:grid-cols-2"><input type="date" max={today()} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className={`${inputClass} dark:[color-scheme:dark]`} /><input type="number" min="0" step="0.01" placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={inputClass} /></div>
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className={`w-full ${inputClass}`}>{categories.map((c) => <option key={c}>{c}</option>)}</select>
                 <input placeholder="Description e.g. Rogers internet" value={form.description} onChange={(e) => updateDescription(e.target.value)} className={`w-full ${inputClass}`} />
                 <div className="grid gap-3 sm:grid-cols-2"><select value={form.paidBy} onChange={(e) => setForm({ ...form, paidBy: e.target.value })} className={inputClass}>{people.map((p) => <option key={p}>{p}</option>)}</select><select value={form.split} onChange={(e) => setForm({ ...form, split: e.target.value })} className={inputClass}><option>50/50</option><option>Personal</option></select></div>
@@ -236,8 +234,8 @@ export default function ApartmentExpenseTracker() {
             </div>
           </section>
 
-          <section className="space-y-5">
-            <div className="grid gap-5 xl:grid-cols-2">
+          <section className="min-w-0 space-y-5">
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <div className={cardClass}><h2 className="text-xl font-bold">Savings tracker</h2><input type="number" value={savingsGoal} onChange={(e) => setSavingsGoal(Number(e.target.value))} className={`mt-3 w-full ${inputClass}`} /><p className="mt-3 text-2xl font-bold">{money(totals.savings)}</p><div className="mt-3 h-3 rounded-full bg-slate-200"><div className="h-3 rounded-full bg-emerald-500" style={{ width: `${savingsUsed}%` }} /></div></div>
               <div className={cardClass}><h2 className="text-xl font-bold">Charts & analytics</h2><div className="mt-3 space-y-2">{categoryTotals.length === 0 ? <p className="text-sm opacity-70">Add expenses to see chart.</p> : categoryTotals.map((item) => <div key={item.category}><div className="flex justify-between text-sm"><span>{item.category}</span><b>{money(item.total)}</b></div><div className="h-2 rounded-full bg-slate-200"><div className="h-2 rounded-full bg-indigo-500" style={{ width: `${totals.total ? (item.total / totals.total) * 100 : 0}%` }} /></div></div>)}</div></div>
             </div>
@@ -246,10 +244,10 @@ export default function ApartmentExpenseTracker() {
 
             <div className={cardClass}>
               <h2 className="mb-4 text-xl font-bold">Expenses for {month}</h2>
-              <div className="overflow-x-auto rounded-2xl border border-slate-200/70"><table className="w-full min-w-[780px] text-left text-sm sm:text-base"><thead className={dark ? "bg-slate-800" : "bg-slate-100"}><tr><th className="p-3">Date</th><th className="p-3">Category</th><th className="p-3">Description</th><th className="p-3">Paid By</th><th className="p-3">Receipt</th><th className="p-3 text-right">Amount</th><th className="p-3 text-right">Actions</th></tr></thead><tbody>{monthExpenses.length === 0 ? <tr><td colSpan={7} className="p-5 text-center opacity-70">No expenses yet.</td></tr> : monthExpenses.map((item) => <tr key={item.id} className="border-t border-slate-200/70"><td className="p-3">{item.date}</td><td className="p-3">{item.category}</td><td className="p-3 opacity-80">{item.description || "-"}</td><td className="p-3 opacity-80">{item.paidBy}</td><td className="p-3 opacity-80">{item.receipt || "-"}</td><td className="p-3 text-right font-semibold">{money(item.amount)}</td><td className="p-3 text-right"><button onClick={() => editExpense(item)} className="mr-2 rounded-xl px-3 py-2 hover:bg-indigo-100">Edit</button><button onClick={() => deleteExpense(item.id)} className="rounded-xl px-3 py-2 text-rose-600 hover:bg-rose-100">Delete</button></td></tr>)}</tbody></table></div>
+              <div className="-mx-2 overflow-x-auto rounded-2xl border border-slate-200/70 sm:mx-0"><table className="w-full min-w-[720px] text-left text-sm"><thead className={dark ? "bg-slate-800" : "bg-slate-100"}><tr><th className="whitespace-nowrap p-3">Date</th><th className="whitespace-nowrap p-3">Category</th><th className="whitespace-nowrap p-3">Description</th><th className="whitespace-nowrap p-3">Paid By</th><th className="whitespace-nowrap p-3">Receipt</th><th className="whitespace-nowrap p-3 text-right">Amount</th><th className="whitespace-nowrap p-3 text-right">Actions</th></tr></thead><tbody>{monthExpenses.length === 0 ? <tr><td colSpan={7} className="p-5 text-center opacity-70">No expenses yet.</td></tr> : monthExpenses.map((item) => <tr key={item.id} className="border-t border-slate-200/70"><td className="whitespace-nowrap p-3">{item.date}</td><td className="whitespace-nowrap p-3">{item.category}</td><td className="max-w-[180px] truncate p-3 opacity-80">{item.description || "-"}</td><td className="max-w-[180px] truncate p-3 opacity-80">{item.paidBy}</td><td className="max-w-[180px] truncate p-3 opacity-80">{item.receipt || "-"}</td><td className="whitespace-nowrap p-3 text-right font-semibold">{money(item.amount)}</td><td className="whitespace-nowrap p-3 text-right"><button onClick={() => editExpense(item)} className="mr-2 rounded-xl px-3 py-2 hover:bg-indigo-100">Edit</button><button onClick={() => deleteExpense(item.id)} className="rounded-xl px-3 py-2 text-rose-600 hover:bg-rose-100">Delete</button></td></tr>)}</tbody></table></div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">{people.map((person) => <div key={person} className={cardClass}><h3 className="text-lg font-bold">{person}</h3><div className="mt-3 space-y-2 text-sm opacity-80"><div className="flex justify-between"><span>Paid</span><b>{money(totals.paid[person])}</b></div><div className="flex justify-between"><span>Fair share</span><b>{money(totals.share[person])}</b></div><div className="flex justify-between border-t pt-2"><span>Balance</span><b>{money(totals.balance[person])}</b></div></div></div>)}</div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{people.map((person) => <div key={person} className={cardClass}><h3 className="text-lg font-bold">{person}</h3><div className="mt-3 space-y-2 text-sm opacity-80"><div className="flex justify-between"><span>Paid</span><b>{money(totals.paid[person])}</b></div><div className="flex justify-between"><span>Fair share</span><b>{money(totals.share[person])}</b></div><div className="flex justify-between border-t pt-2"><span>Balance</span><b>{money(totals.balance[person])}</b></div></div></div>)}</div>
           </section>
         </main>
       </div>
