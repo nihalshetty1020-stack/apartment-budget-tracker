@@ -22,6 +22,7 @@ const TEST_STORAGE_KEY = "budget-tracker-test-key";
 const SETTINGS_DOC = "shared-settings";
 
 function today() { return new Date().toISOString().slice(0, 10); }
+function isFutureDate(dateValue) { return dateValue > today(); }
 function currentMonth() { return new Date().toISOString().slice(0, 7); }
 function money(value) { return new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(Number(value || 0)); }
 function makeId() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
@@ -106,6 +107,7 @@ function runTests() {
   console.assert(createCsv(sample).includes(NEW_LINE), "CSV should include new lines");
   console.assert(testStorage(), "local storage should save and load test data");
   console.assert(today().length === 10, "today helper should return yyyy-mm-dd");
+  console.assert(isFutureDate("2999-01-01") === true, "future date should be detected");
   console.assert(typeof STORAGE_KEY === "string", "storage key should exist");
   console.assert(typeof SETTINGS_DOC === "string", "settings doc should exist");
 }
@@ -181,6 +183,11 @@ export default function ApartmentExpenseTracker() {
 
   async function saveExpense(event) {
     event.preventDefault();
+    if (isFutureDate(form.date)) {
+      alert("Future dates are not allowed. Please choose today or a past date.");
+      setForm((current) => ({ ...current, date: today() }));
+      return;
+    }
     if (!form.amount || Number(form.amount) <= 0) return;
     const saved = { ...form, amount: Number(form.amount), month: form.date.slice(0, 7), updatedAt: serverTimestamp() };
     try {
@@ -322,7 +329,7 @@ export default function ApartmentExpenseTracker() {
             <div className={cardClass}>
               <h2 className="mb-4 text-xl font-bold">{editingId ? "Edit expense" : "Add expense"}</h2>
               <form onSubmit={saveExpense} className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-2"><div className={dark ? "date-field-wrap relative" : "relative"}><input type="date" max={today()} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className={`w-full ${dateInputClass}`} /></div><input type="number" min="0" step="0.01" placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={inputClass} /></div>
+                <div className="grid gap-3 sm:grid-cols-2"><div className={dark ? "date-field-wrap relative" : "relative"}><input type="date" max={today()} value={form.date} onChange={(e) => setForm({ ...form, date: isFutureDate(e.target.value) ? today() : e.target.value })} className={`w-full ${dateInputClass}`} /></div><input type="number" min="0" step="0.01" placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={inputClass} /></div>
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className={`w-full ${inputClass}`}>{categories.map((c) => <option key={c}>{c}</option>)}</select>
                 <input placeholder="Description e.g. Rogers internet" value={form.description} onChange={(e) => updateDescription(e.target.value)} className={`w-full ${inputClass}`} />
                 <div className="grid gap-3 sm:grid-cols-2"><select value={form.paidBy} onChange={(e) => setForm({ ...form, paidBy: e.target.value })} className={inputClass}>{people.map((p) => <option key={p}>{p}</option>)}</select><select value={form.split} onChange={(e) => setForm({ ...form, split: e.target.value })} className={inputClass}><option>50/50</option><option>Personal</option></select></div>
