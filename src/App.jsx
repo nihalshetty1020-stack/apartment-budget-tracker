@@ -174,10 +174,39 @@ export default function ApartmentExpenseTracker() {
 
   const pageClass = dark ? "min-h-screen bg-slate-950 text-white" : "min-h-screen bg-gradient-to-br from-indigo-50 via-white to-emerald-50 text-slate-900";
   const cardClass = dark ? "rounded-3xl border border-slate-800 bg-slate-900 p-5 sm:p-6" : "rounded-3xl border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6";
-  const inputClass = dark ? "rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-base text-white outline-none color-scheme-dark" : "rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base outline-none";
+  const inputClass = dark ? "rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-base text-white outline-none" : "rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base outline-none";
+  const dateInputClass = dark ? `${inputClass} date-input-dark` : inputClass;
 
   return (
     <div className={pageClass}>
+      <style>{`
+        .date-input-dark {
+          color-scheme: dark;
+          position: relative;
+        }
+        .date-input-dark::-webkit-calendar-picker-indicator {
+          opacity: 0;
+          cursor: pointer;
+        }
+        .date-field-wrap::after {
+          content: "📅";
+          position: absolute;
+          right: 1rem;
+          top: 50%;
+          transform: translateY(-50%);
+          pointer-events: none;
+          font-size: 1rem;
+          opacity: 0.95;
+        }
+        .date-input-dark::-webkit-datetime-edit,
+        .date-input-dark::-webkit-datetime-edit-fields-wrapper,
+        .date-input-dark::-webkit-datetime-edit-text,
+        .date-input-dark::-webkit-datetime-edit-month-field,
+        .date-input-dark::-webkit-datetime-edit-day-field,
+        .date-input-dark::-webkit-datetime-edit-year-field {
+          color: white;
+        }
+      `}</style>
       <div className="mx-auto w-full max-w-6xl overflow-x-hidden px-3 py-4 sm:px-4 sm:py-5 lg:px-6">
         <header className="mb-5 rounded-[2rem] bg-gradient-to-br from-indigo-600 via-violet-600 to-teal-500 p-5 text-white shadow-xl sm:p-6 lg:p-7">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -196,7 +225,7 @@ export default function ApartmentExpenseTracker() {
         </header>
 
         <section className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className={cardClass}><p className="text-sm opacity-70">Month</p><input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className={`mt-3 w-full min-w-0 ${inputClass} dark:[color-scheme:dark]`} /></div>
+          <div className={cardClass}><p className="text-sm opacity-70">Month</p><div className={dark ? "date-field-wrap relative mt-3" : "mt-3"}><input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className={`w-full min-w-0 ${dateInputClass}`} /></div></div>
           <div className="min-w-0 rounded-3xl bg-gradient-to-br from-indigo-500 to-violet-500 p-5 text-white"><p className="text-sm text-white/80">Monthly Total</p><h2 className="mt-3 text-2xl font-bold sm:text-3xl">{money(totals.total)}</h2><p className="text-sm text-white/80">{monthExpenses.length} expenses</p></div>
           <div className="min-w-0 rounded-3xl bg-gradient-to-br from-teal-500 to-emerald-500 p-5 text-white"><p className="text-sm text-white/80">Budget</p><input type="number" value={budget} onChange={(e) => setBudget(Number(e.target.value))} className="mt-3 w-full rounded-2xl border border-white/40 bg-white/15 px-4 py-3 text-xl font-bold text-white outline-none" /><div className="mt-3 h-2 rounded-full bg-white/25"><div className="h-2 rounded-full bg-white" style={{ width: `${budgetUsed}%` }} /></div></div>
           <div className="min-w-0 rounded-3xl bg-gradient-to-br from-orange-400 to-pink-500 p-5 text-white"><p className="text-sm text-white/80">Split Summary</p><h2 className="mt-3 text-lg font-bold">{settlement}</h2><p className="text-sm text-white/80">50/50 or personal</p></div>
@@ -209,7 +238,7 @@ export default function ApartmentExpenseTracker() {
             <div className={cardClass}>
               <h2 className="mb-4 text-xl font-bold">{editingId ? "Edit expense" : "Add expense"}</h2>
               <form onSubmit={saveExpense} className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-2"><input type="date" max={today()} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className={`${inputClass} dark:[color-scheme:dark]`} /><input type="number" min="0" step="0.01" placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={inputClass} /></div>
+                <div className="grid gap-3 sm:grid-cols-2"><div className={dark ? "date-field-wrap relative" : "relative"}><input type="date" max={today()} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className={`w-full ${dateInputClass}`} /></div><input type="number" min="0" step="0.01" placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={inputClass} /></div>
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className={`w-full ${inputClass}`}>{categories.map((c) => <option key={c}>{c}</option>)}</select>
                 <input placeholder="Description e.g. Rogers internet" value={form.description} onChange={(e) => updateDescription(e.target.value)} className={`w-full ${inputClass}`} />
                 <div className="grid gap-3 sm:grid-cols-2"><select value={form.paidBy} onChange={(e) => setForm({ ...form, paidBy: e.target.value })} className={inputClass}>{people.map((p) => <option key={p}>{p}</option>)}</select><select value={form.split} onChange={(e) => setForm({ ...form, split: e.target.value })} className={inputClass}><option>50/50</option><option>Personal</option></select></div>
