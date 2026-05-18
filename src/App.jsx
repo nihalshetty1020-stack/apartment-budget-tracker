@@ -1,19 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { initializeApp } from "firebase/app";
-import { addDoc, collection, deleteDoc, doc, getDoc, getFirestore, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import { auth, db, provider } from "./firebase";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDKl5TBd-XIiPnvuBxd56cG9sg_0lxeeIU",
-  authDomain: "apartment-budget-tracker.firebaseapp.com",
-  projectId: "apartment-budget-tracker",
-  storageBucket: "apartment-budget-tracker.firebasestorage.app",
-  messagingSenderId: "389694587209",
-  appId: "1:389694587209:web:99f521975999a66f1c9a98",
-};
-
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp);
-
+const allowedEmails = ["nihalshetty1020@gmail.com","shettyshreya9630@gmail.com"];
 const people = ["Nihal", "Shreya"];
 const categories = ["Rent", "Grocery", "Hydro", "Wi-Fi", "Laundry", "Rental Insurance", "Household", "Transportation", "Savings", "Other"];
 const NEW_LINE = String.fromCharCode(10);
@@ -23,6 +13,21 @@ const SETTINGS_DOC = "shared-settings";
 
 function today() { return new Date().toISOString().slice(0, 10); }
 function isFutureDate(dateValue) { return dateValue > today(); }
+function pad2(value) { return String(value).padStart(2, "0"); }
+function getDateParts(dateValue) {
+  const safeDate = dateValue || today();
+  const [year, month, day] = safeDate.split("-").map(Number);
+  return { year, month, day };
+}
+function daysInMonth(year, month) {
+  return new Date(year, month, 0).getDate();
+}
+function buildSafeDate(year, month, day) {
+  const maxDay = daysInMonth(year, month);
+  const safeDay = Math.min(Number(day), maxDay);
+  const builtDate = `${year}-${pad2(month)}-${pad2(safeDay)}`;
+  return isFutureDate(builtDate) ? today() : builtDate;
+}
 function currentMonth() { return new Date().toISOString().slice(0, 7); }
 function money(value) { return new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(Number(value || 0)); }
 function makeId() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
@@ -108,13 +113,17 @@ function runTests() {
   console.assert(testStorage(), "local storage should save and load test data");
   console.assert(today().length === 10, "today helper should return yyyy-mm-dd");
   console.assert(isFutureDate("2999-01-01") === true, "future date should be detected");
+  console.assert(buildSafeDate(2999, 1, 1) === today(), "future built date should reset to today");
   console.assert(typeof STORAGE_KEY === "string", "storage key should exist");
   console.assert(typeof SETTINGS_DOC === "string", "settings doc should exist");
+  console.assert(Array.isArray(allowedEmails), "allowed emails should be an array");
 }
 if (typeof window !== "undefined") runTests();
 
 export default function ApartmentExpenseTracker() {
   const savedData = typeof window !== "undefined" ? loadSavedData() : null;
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [expenses, setExpenses] = useState(savedData?.expenses || []);
   const [syncStatus, setSyncStatus] = useState("Connecting to cloud...");
   const [month, setMonth] = useState(savedData?.month || currentMonth());
@@ -130,6 +139,7 @@ export default function ApartmentExpenseTracker() {
     { id: makeId(), name: "Insurance", amount: 0, category: "Rental Insurance", paidBy: "Nihal", dueDay: 10 },
   ]);
   const [form, setForm] = useState({ date: today(), category: "Grocery", description: "", amount: "", paidBy: savedData?.activeUser || "Nihal", split: "50/50", receipt: "" });
+  const isAllowedUser = Boolean(user?.email && allowedEmails.includes(user.email));
 
   const monthExpenses = useMemo(() => expenses.filter((item) => item.month === month), [expenses, month]);
   const totals = useMemo(() => calculate(monthExpenses), [monthExpenses]);
@@ -137,12 +147,28 @@ export default function ApartmentExpenseTracker() {
   const budgetUsed = budget > 0 ? Math.min((totals.total / budget) * 100, 100) : 0;
   const savingsUsed = savingsGoal > 0 ? Math.min((totals.savings / savingsGoal) * 100, 100) : 0;
   const settlement = Math.abs(totals.balance.Nihal) < 0.01 ? "All settled" : totals.balance.Nihal > 0 ? `Shreya owes Nihal ${money(Math.abs(totals.balance.Shreya))}` : `Nihal owes Shreya ${money(Math.abs(totals.balance.Nihal))}`;
+  const todayParts = getDateParts(today());
+  const formDateParts = getDateParts(form.date);
+  const yearOptions = Array.from({ length: todayParts.year - 2024 + 1 }, (_, index) => 2024 + index).reverse();
+  const maxMonth = formDateParts.year === todayParts.year ? todayParts.month : 12;
+  const monthOptions = Array.from({ length: maxMonth }, (_, index) => index + 1);
+  const maxDayForSelectedMonth = formDateParts.year === todayParts.year && formDateParts.month === todayParts.month ? todayParts.day : daysInMonth(formDateParts.year, formDateParts.month);
+  const dayOptions = Array.from({ length: maxDayForSelectedMonth }, (_, index) => index + 1);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     saveData({ expenses, month, budget, savingsGoal, dark, activeUser, recurring });
   }, [expenses, month, budget, savingsGoal, dark, activeUser, recurring]);
 
   useEffect(() => {
+    if (!isAllowedUser) return undefined;
     const expensesQuery = query(collection(db, "expenses"), orderBy("date", "desc"));
     const unsubscribe = onSnapshot(expensesQuery, (snapshot) => {
       const cloudExpenses = snapshot.docs.map((expenseDoc) => ({ id: expenseDoc.id, ...expenseDoc.data() }));
@@ -154,9 +180,10 @@ export default function ApartmentExpenseTracker() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [isAllowedUser]);
 
   useEffect(() => {
+    if (!isAllowedUser) return;
     const settingsRef = doc(db, "settings", SETTINGS_DOC);
     getDoc(settingsRef).then((snapshot) => {
       if (snapshot.exists()) {
@@ -168,7 +195,24 @@ export default function ApartmentExpenseTracker() {
         setDoc(settingsRef, { budget, savingsGoal, recurring, updatedAt: serverTimestamp() });
       }
     }).catch((error) => console.error("Firestore settings load error:", error));
-  }, []);
+  }, [isAllowedUser]);
+
+  async function loginWithGoogle() {
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error("Google login error:", error);
+      alert("Google sign-in failed. Please try again.");
+    }
+  }
+
+  async function logout() {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  }
 
   async function saveSharedSettings(nextSettings) {
     const settingsRef = doc(db, "settings", SETTINGS_DOC);
@@ -267,6 +311,47 @@ export default function ApartmentExpenseTracker() {
   const inputClass = dark ? "rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-base text-white outline-none" : "rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base outline-none";
   const dateInputClass = dark ? `${inputClass} date-input-dark` : inputClass;
 
+  if (authLoading) {
+    return (
+      <div className={pageClass}>
+        <div className="flex min-h-screen items-center justify-center px-4">
+          <div className={cardClass}>
+            <h1 className="text-2xl font-bold">Loading Budget Tracker...</h1>
+            <p className="mt-2 opacity-70">Checking secure access.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className={pageClass}>
+        <div className="flex min-h-screen items-center justify-center px-4">
+          <div className={`${cardClass} max-w-md text-center`}>
+            <h1 className="text-3xl font-bold">Budget Tracker</h1>
+            <p className="mt-3 opacity-70">Sign in with Google to access your shared apartment budget.</p>
+            <button onClick={loginWithGoogle} className="mt-6 w-full rounded-2xl bg-gradient-to-r from-indigo-600 to-teal-500 px-4 py-4 text-base font-semibold text-white shadow-sm">Sign in with Google</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAllowedUser) {
+    return (
+      <div className={pageClass}>
+        <div className="flex min-h-screen items-center justify-center px-4">
+          <div className={`${cardClass} max-w-md text-center`}>
+            <h1 className="text-2xl font-bold">Access not allowed</h1>
+            <p className="mt-3 opacity-70">You are signed in as {user.email}, but this account is not allowed to view this budget tracker.</p>
+            <button onClick={logout} className="mt-6 w-full rounded-2xl bg-slate-800 px-4 py-4 text-base font-semibold text-white shadow-sm">Sign out</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={pageClass}>
       <style>{`
@@ -303,14 +388,18 @@ export default function ApartmentExpenseTracker() {
             <div>
               <h1 className="text-3xl font-bold sm:text-4xl">Budget Tracker</h1>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/85 sm:text-base">Shared apartment budget with split tracking, recurring bills, savings, receipts, and backups.</p>
-              <p className="mt-3 inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white/90">{syncStatus}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <p className="inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white/90">{syncStatus}</p>
+                <p className="inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white/90">Signed in: {user.email}</p>
+              </div>
             </div>
-            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:w-auto">
+            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-4 lg:w-auto">
               <select value={activeUser} onChange={(e) => { setActiveUser(e.target.value); setForm((f) => ({ ...f, paidBy: e.target.value })); }} className="w-full rounded-2xl border border-white/40 bg-white/10 px-4 py-3 text-base text-white outline-none">
                 {people.map((p) => <option key={p} className="text-slate-900">{p}</option>)}
               </select>
               <button onClick={() => setDark(!dark)} className="w-full rounded-2xl border border-white/40 bg-white/10 px-4 py-3 text-base text-white outline-none">{dark ? "Light" : "Dark"}</button>
               <button onClick={exportCsv} className="w-full rounded-2xl bg-white px-4 py-3 text-base font-semibold text-indigo-700">CSV / Sheets Backup</button>
+              <button onClick={logout} className="w-full rounded-2xl border border-white/40 bg-white/10 px-4 py-3 text-base text-white outline-none">Logout</button>
             </div>
           </div>
         </header>
@@ -329,7 +418,7 @@ export default function ApartmentExpenseTracker() {
             <div className={cardClass}>
               <h2 className="mb-4 text-xl font-bold">{editingId ? "Edit expense" : "Add expense"}</h2>
               <form onSubmit={saveExpense} className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-2"><div className={dark ? "date-field-wrap relative" : "relative"}><input type="date" max={today()} value={form.date} onChange={(e) => setForm({ ...form, date: isFutureDate(e.target.value) ? today() : e.target.value })} className={`w-full ${dateInputClass}`} /></div><input type="number" min="0" step="0.01" placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={inputClass} /></div>
+                <div className="grid gap-3 sm:grid-cols-2"><div className="grid grid-cols-3 gap-2"><select aria-label="Expense day" value={formDateParts.day} onChange={(e) => setForm({ ...form, date: buildSafeDate(formDateParts.year, formDateParts.month, Number(e.target.value)) })} className={`w-full ${inputClass}`}>{dayOptions.map((day) => <option key={day} value={day}>{pad2(day)}</option>)}</select><select aria-label="Expense month" value={formDateParts.month} onChange={(e) => setForm({ ...form, date: buildSafeDate(formDateParts.year, Number(e.target.value), formDateParts.day) })} className={`w-full ${inputClass}`}>{monthOptions.map((monthNumber) => <option key={monthNumber} value={monthNumber}>{pad2(monthNumber)}</option>)}</select><select aria-label="Expense year" value={formDateParts.year} onChange={(e) => setForm({ ...form, date: buildSafeDate(Number(e.target.value), formDateParts.month, formDateParts.day) })} className={`w-full ${inputClass}`}>{yearOptions.map((yearNumber) => <option key={yearNumber} value={yearNumber}>{yearNumber}</option>)}</select></div><input type="number" min="0" step="0.01" placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={inputClass} /></div>
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className={`w-full ${inputClass}`}>{categories.map((c) => <option key={c}>{c}</option>)}</select>
                 <input placeholder="Description e.g. Rogers internet" value={form.description} onChange={(e) => updateDescription(e.target.value)} className={`w-full ${inputClass}`} />
                 <div className="grid gap-3 sm:grid-cols-2"><select value={form.paidBy} onChange={(e) => setForm({ ...form, paidBy: e.target.value })} className={inputClass}>{people.map((p) => <option key={p}>{p}</option>)}</select><select value={form.split} onChange={(e) => setForm({ ...form, split: e.target.value })} className={inputClass}><option>50/50</option><option>Personal</option></select></div>
