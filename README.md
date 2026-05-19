@@ -1,16 +1,53 @@
-# React + Vite
+# Apartment Expense Tracker
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A shared cloud-based apartment budgeting web application built using React and Firebase.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Google Authentication
+- Shared expense tracking
+- Real-time cloud synchronization
+- Recurring bill management
+- CSV export
+- Monthly expense summaries
+- Mobile responsive design
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- React
+- Firebase Authentication
+- Firestore Database
+- Vite
+- Vercel
+- GitHub
 
-## Expanding the ESLint configuration
+## Live Demo
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+https://apartment-budget-tracker.vercel.app
+
+## Purpose
+
+This application was built to simplify shared apartment expense management through secure cloud-based access and real-time synchronization between users.
+
+## Key Functionalities
+
+- Shared household budgeting
+- Expense categorization
+- Monthly recurring expenses
+- Shared user access control
+- Persistent cloud storage
+- Responsive UI for desktop and mobile
+
+## Security
+
+- Firebase Authentication
+- Authorized user-only access
+- Protected Firestore security rules
+
+## Future Improvements
+
+- Expense analytics dashboard
+- Charts and visual reporting
+- Savings goals tracking
+- Receipt uploads
+- Notification reminders
